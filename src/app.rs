@@ -8,7 +8,10 @@ use eframe::egui;
 
 use crate::{
     data::{LoadedConfig, TierFilter},
-    firewall::{CHAIN, FirewallAction, IptablesPlan},
+    firewall::{
+        cached_elevation_button_label, elevation_prompt_label, firewall_apply_warning,
+        firewall_backend_name, primary_run_button_label, FirewallAction, IptablesPlan,
+    },
     map::{self, MapCamera},
     sdr::{fetch_live_config, load_cache, save_cache},
     settings::{
@@ -141,7 +144,7 @@ impl ServerChooserApp {
         };
         if !config.live {
             self.status =
-                "Refusing to apply iptables from cached data; refresh live Valve SDR data first"
+                "Refusing to apply firewall rules from cached data; refresh live Valve SDR data first"
                     .to_owned();
             return;
         }
@@ -153,7 +156,7 @@ impl ServerChooserApp {
             .collect();
 
         if selected.is_empty() {
-            self.status = "Allow at least one relay POP before applying iptables".to_owned();
+            self.status = "Allow at least one relay POP before applying firewall rules".to_owned();
             return;
         }
 
@@ -324,10 +327,10 @@ impl ServerChooserApp {
             }
             ui.separator();
             ui.label("Firewall");
-            if ui.button("Apply rules").clicked() {
+            if ui.button(format!("Apply {} rules", firewall_backend_name())).clicked() {
                 self.prepare_apply_firewall();
             }
-            if ui.button("Remove rules").clicked() {
+            if ui.button(format!("Remove {} rules", firewall_backend_name())).clicked() {
                 self.prepare_clear_firewall();
             }
         });
@@ -433,27 +436,30 @@ impl ServerChooserApp {
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
-                ui.label(format!(
-                    "Selected POPs are allowed; unselected POPs are blocked. This only modifies the {CHAIN} chain plus its owned OUTPUT jump."
-                ));
-                ui.add_space(8.0);
-                ui.label("Sudo password");
-                ui.add(
-                    egui::TextEdit::singleline(&mut prompt.password)
-                        .password(true)
-                        .desired_width(f32::INFINITY),
-                );
+                ui.label(firewall_apply_warning());
+                if let Some(label) = elevation_prompt_label() {
+                    ui.add_space(8.0);
+                    ui.label(label);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut prompt.password)
+                            .password(true)
+                            .desired_width(f32::INFINITY),
+                    );
+                }
                 if let Some(error) = &prompt.error {
                     ui.add_space(8.0);
                     ui.colored_label(egui::Color32::from_rgb(235, 111, 96), error);
                 }
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Run").clicked() {
-                        result = Some(prompt.action.run(Some(&prompt.password)));
+                    if ui.button(primary_run_button_label()).clicked() {
+                        let password = elevation_prompt_label().map(|_| prompt.password.as_str());
+                        result = Some(prompt.action.run(password));
                     }
-                    if ui.button("Use cached sudo").clicked() {
-                        result = Some(prompt.action.run(None));
+                    if let Some(label) = cached_elevation_button_label() {
+                        if ui.button(label).clicked() {
+                            result = Some(prompt.action.run(None));
+                        }
                     }
                     if ui.button("Cancel").clicked() {
                         close = true;
@@ -492,9 +498,7 @@ impl ServerChooserApp {
                 ui.set_width(460.0);
                 ui.label("Checked POPs are allowed. Unchecked POPs are blocked when you apply firewall rules.");
                 ui.label("The app uses Valve's current Steam Datagram Relay config for CS2, not old server IP:port matchmaking data.");
-                ui.label(format!(
-                    "Firewall changes are limited to the {CHAIN} chain and its owned OUTPUT jump."
-                ));
+                ui.label(firewall_apply_warning());
                 ui.separator();
                 ui.label("Map controls");
                 ui.label("Mouse wheel zooms the map around the cursor.");

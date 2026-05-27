@@ -52,13 +52,28 @@ fn write_allowed_pops(path: &Path, allowed_pops: BTreeSet<String>) -> Result<(),
 }
 
 pub fn config_dir() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".config")))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("cs2-server-chooser")
+    platform_config_base().join("cs2-server-chooser")
 }
 
 fn selection_path() -> PathBuf {
     config_dir().join("selection.json")
+}
+
+#[cfg(target_os = "windows")]
+fn platform_config_base() -> PathBuf {
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|home| PathBuf::from(home).join("AppData").join("Roaming"))
+        })
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn platform_config_base() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".config")))
+        .unwrap_or_else(|| PathBuf::from("."))
 }

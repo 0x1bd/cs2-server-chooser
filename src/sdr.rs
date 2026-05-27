@@ -66,9 +66,24 @@ fn parse_config(json: &str, source: &str) -> Result<LoadedConfig, String> {
 }
 
 fn cache_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME")
+    cache_base_dir().join("cs2-server-chooser").join("sdr_config.json")
+}
+
+#[cfg(target_os = "windows")]
+fn cache_base_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("USERPROFILE")
+                .map(|home| PathBuf::from(home).join("AppData").join("Local"))
+        })
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cache_base_dir() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("cs2-server-chooser").join("sdr_config.json")
+        .unwrap_or_else(|| PathBuf::from("."))
 }
