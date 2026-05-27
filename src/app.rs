@@ -11,7 +11,10 @@ use crate::{
     firewall::{CHAIN, FirewallAction, IptablesPlan},
     map::{self, MapCamera},
     sdr::{fetch_live_config, load_cache, save_cache},
-    settings::{load_allowed_pops, save_allowed_pops},
+    settings::{
+        default_export_path, export_allowed_pops, import_allowed_pops, load_allowed_pops,
+        save_allowed_pops,
+    },
 };
 
 enum RefreshState {
@@ -29,10 +32,10 @@ pub struct ServerChooserApp {
     highlighted: Option<String>,
     help_open: bool,
     map_camera: MapCamera,
-    sudo_prompt: Option<SudoPrompt>,
+    firewall_prompt: Option<FirewallPrompt>,
 }
 
-struct SudoPrompt {
+struct FirewallPrompt {
     action: FirewallAction,
     password: String,
     error: Option<String>,
@@ -50,7 +53,7 @@ impl ServerChooserApp {
             highlighted: None,
             help_open: false,
             map_camera: MapCamera::default(),
-            sudo_prompt: None,
+            firewall_prompt: None,
         };
         app.restore_allowed_selection();
         app.refresh_live();
@@ -155,7 +158,7 @@ impl ServerChooserApp {
             return;
         }
 
-        self.sudo_prompt = Some(SudoPrompt {
+        self.firewall_prompt = Some(FirewallPrompt {
             action: FirewallAction::Apply(IptablesPlan::from_config(config, &selected)),
             password: String::new(),
             error: None,
@@ -169,23 +172,100 @@ impl ServerChooserApp {
         }
     }
 
+    fn current_allowed_pops(&self) -> BTreeSet<String> {
+        self.config
+            .as_ref()
+            .map(|config| {
+                config
+                    .pops
+                    .iter()
+                    .filter(|pop| pop.selected && !pop.relays.is_empty())
+                    .map(|pop| pop.code.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn save_allowed_selection(&mut self) {
-        let Some(config) = &self.config else {
-            return;
-        };
-        let allowed = config
-            .pops
-            .iter()
-            .filter(|pop| pop.selected && !pop.relays.is_empty())
-            .map(|pop| pop.code.clone())
-            .collect();
+        let allowed = self.current_allowed_pops();
         if let Err(err) = save_allowed_pops(allowed) {
             self.status = format!("Failed to save allowed POPs: {err}");
         }
     }
 
+    fn export_allowed_selection(&mut self) {
+        let default_path = default_export_path();
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Export allowed POP selection")
+            .add_filter("JSON", &["json"])
+            .set_file_name("cs2-server-chooser-selection.json");
+
+        if let Some(parent) = default_path.parent() {
+            dialog = dialog.set_directory(parent);
+        }
+
+        let Some(path) = dialog.save_file() else {
+            self.status = "Export cancelled".to_owned();
+            return;
+        };
+
+        let allowed = self.current_allowed_pops();
+        match export_allowed_pops(&path, allowed.clone()) {
+            Ok(()) => {
+                self.status = format!(
+                    "Exported {} allowed POPs to {}",
+                    allowed.len(),
+                    path.display()
+                );
+            }
+            Err(err) => {
+                self.status = format!("Failed to export allowed POPs: {err}");
+            }
+        }
+    }
+
+    fn import_allowed_selection(&mut self) {
+        let default_path = default_export_path();
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Import allowed POP selection")
+            .add_filter("JSON", &["json"]);
+
+        if let Some(parent) = default_path.parent() {
+            dialog = dialog.set_directory(parent);
+        }
+
+        let Some(path) = dialog.pick_file() else {
+            self.status = "Import cancelled".to_owned();
+            return;
+        };
+
+        match import_allowed_pops(&path) {
+            Ok(allowed) => {
+                if let Some(config) = &mut self.config {
+                    apply_allowed_codes(config, &allowed);
+                }
+
+                match save_allowed_pops(allowed.clone()) {
+                    Ok(()) => {
+                        self.status = format!(
+                            "Imported {} allowed POP codes from {}",
+                            allowed.len(),
+                            path.display()
+                        );
+                    }
+                    Err(err) => {
+                        self.status = format!("Imported selection but failed to save it: {err}");
+                    }
+                }
+            }
+            Err(err) => {
+                self.status = format!("Failed to import allowed POPs: {err}");
+            }
+        }
+    }
+
     fn prepare_clear_firewall(&mut self) {
-        self.sudo_prompt = Some(SudoPrompt {
+        self.firewall_prompt = Some(FirewallPrompt {
             action: FirewallAction::Clear,
             password: String::new(),
             error: None,
@@ -236,6 +316,12 @@ impl ServerChooserApp {
                     }
                 }
                 self.save_allowed_selection();
+            }
+            if ui.button("Import selection").clicked() {
+                self.import_allowed_selection();
+            }
+            if ui.button("Export selection").clicked() {
+                self.export_allowed_selection();
             }
             ui.separator();
             ui.label("Firewall");
@@ -336,8 +422,8 @@ impl ServerChooserApp {
         }
     }
 
-    fn draw_sudo_prompt(&mut self, ctx: &egui::Context) {
-        let Some(prompt) = &mut self.sudo_prompt else {
+    fn draw_firewall_prompt(&mut self, ctx: &egui::Context) {
+        let Some(prompt) = &mut self.firewall_prompt else {
             return;
         };
         let mut close = false;
@@ -348,7 +434,7 @@ impl ServerChooserApp {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                ui.set_width(420.0);
+                ui.set_width(460.0);
                 ui.label(format!(
                     "Selected POPs are allowed; unselected POPs are blocked. This only modifies the {CHAIN} chain plus its owned OUTPUT jump."
                 ));
@@ -360,6 +446,7 @@ impl ServerChooserApp {
                         .desired_width(f32::INFINITY),
                 );
                 if let Some(error) = &prompt.error {
+                    ui.add_space(8.0);
                     ui.colored_label(egui::Color32::from_rgb(235, 111, 96), error);
                 }
                 ui.add_space(8.0);
@@ -383,7 +470,7 @@ impl ServerChooserApp {
                     close = true;
                 }
                 Err(err) => {
-                    if let Some(prompt) = &mut self.sudo_prompt {
+                    if let Some(prompt) = &mut self.firewall_prompt {
                         prompt.error = Some(err);
                     }
                 }
@@ -391,7 +478,7 @@ impl ServerChooserApp {
         }
 
         if close {
-            self.sudo_prompt = None;
+            self.firewall_prompt = None;
         }
     }
 
@@ -416,6 +503,8 @@ impl ServerChooserApp {
                 ui.label("Drag with left or right mouse button to move the map.");
                 ui.label("Click a relay point to toggle whether that POP is allowed.");
                 ui.label("Hover a row or map point to show relay details.");
+                ui.separator();
+                ui.label("Import/export opens a JSON file picker. The default folder is the app config directory.");
             });
     }
 }
@@ -461,7 +550,7 @@ impl eframe::App for ServerChooserApp {
             }
         });
 
-        self.draw_sudo_prompt(ctx);
+        self.draw_firewall_prompt(ctx);
         self.draw_help(ctx);
     }
 }
