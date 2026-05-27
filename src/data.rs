@@ -71,6 +71,5 @@ impl LoadedConfig {
 pub enum TierFilter {
     All,
     ValvePrimary,
-    ValveAny,
-    Partner,
+    ValveAny
 }

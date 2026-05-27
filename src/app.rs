@@ -123,8 +123,7 @@ impl ServerChooserApp {
             .filter(|(_, pop)| match self.tier_filter {
                 TierFilter::All => true,
                 TierFilter::ValvePrimary => pop.tier == 0,
-                TierFilter::ValveAny => pop.tier <= 1,
-                TierFilter::Partner => pop.tier > 1,
+                TierFilter::ValveAny => pop.tier <= 1
             })
             .filter(|(_, pop)| {
                 needle.is_empty()
@@ -363,7 +362,6 @@ impl ServerChooserApp {
             ui.selectable_value(&mut self.tier_filter, TierFilter::All, "All");
             ui.selectable_value(&mut self.tier_filter, TierFilter::ValvePrimary, "Tier 0");
             ui.selectable_value(&mut self.tier_filter, TierFilter::ValveAny, "Valve");
-            ui.selectable_value(&mut self.tier_filter, TierFilter::Partner, "Partner");
         });
         ui.checkbox(&mut self.show_empty_pops, "Show POPs without public relays");
         ui.separator();
