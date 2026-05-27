@@ -11,7 +11,6 @@ pub const FIREWALL_OBJECT: &str = "CS2 Server Chooser";
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 pub const FIREWALL_OBJECT: &str = RULE_GROUP;
 
-pub const CHAIN: &str = FIREWALL_OBJECT;
 
 #[cfg(target_os = "linux")]
 const COMMENT: &str = "cs2-server-chooser owned jump";
@@ -50,9 +49,6 @@ pub struct FirewallPlan {
     rules: Vec<Rule>,
 }
 
-// Compatibility alias for older app.rs imports.
-pub type IptablesPlan = FirewallPlan;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Rule {
     relay: Ipv4Addr,
@@ -76,6 +72,10 @@ impl FirewallPlan {
             }
         }
         Self { rules }
+    }
+
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
     }
 
     fn apply(&self, elevation_password: Option<&str>) -> Result<usize, String> {

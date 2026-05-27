@@ -10,7 +10,7 @@ use crate::{
     data::{LoadedConfig, TierFilter},
     firewall::{
         cached_elevation_button_label, elevation_prompt_label, firewall_apply_warning,
-        firewall_backend_name, primary_run_button_label, FirewallAction, IptablesPlan,
+        firewall_backend_name, primary_run_button_label, FirewallAction, FirewallPlan,
     },
     map::{self, MapCamera},
     sdr::{fetch_live_config, load_cache, save_cache},
@@ -40,8 +40,14 @@ pub struct ServerChooserApp {
 
 struct FirewallPrompt {
     action: FirewallAction,
+    preview: FirewallPreview,
     password: String,
     error: Option<String>,
+}
+
+struct FirewallPreview {
+    title: String,
+    lines: Vec<String>,
 }
 
 impl ServerChooserApp {
@@ -160,8 +166,26 @@ impl ServerChooserApp {
             return;
         }
 
+        let plan = FirewallPlan::from_config(config, &selected);
+        let blocked_pops = config
+            .pops
+            .iter()
+            .filter(|pop| !pop.relays.is_empty() && !selected.contains(pop.code.as_str()))
+            .count();
+        let preview = FirewallPreview {
+            title: "Firewall preview".to_owned(),
+            lines: vec![
+                format!("Backend: {}", firewall_backend_name()),
+                format!("Source: {} revision {}", config.source, config.revision),
+                format!("Allowed POPs: {}", selected.len()),
+                format!("Blocked POPs: {blocked_pops}"),
+                format!("Rules to create: {} outbound UDP relay blocks", plan.rule_count()),
+            ],
+        };
+
         self.firewall_prompt = Some(FirewallPrompt {
-            action: FirewallAction::Apply(IptablesPlan::from_config(config, &selected)),
+            action: FirewallAction::Apply(plan),
+            preview,
             password: String::new(),
             error: None,
         });
@@ -269,6 +293,13 @@ impl ServerChooserApp {
     fn prepare_clear_firewall(&mut self) {
         self.firewall_prompt = Some(FirewallPrompt {
             action: FirewallAction::Clear,
+            preview: FirewallPreview {
+                title: "Firewall cleanup preview".to_owned(),
+                lines: vec![
+                    format!("Backend: {}", firewall_backend_name()),
+                    "Action: remove only rules/chains created by CS2 Server Chooser".to_owned(),
+                ],
+            },
             password: String::new(),
             error: None,
         });
@@ -436,6 +467,13 @@ impl ServerChooserApp {
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.set_width(460.0);
+                ui.group(|ui| {
+                    ui.strong(&prompt.preview.title);
+                    for line in &prompt.preview.lines {
+                        ui.label(line);
+                    }
+                });
+                ui.add_space(8.0);
                 ui.label(firewall_apply_warning());
                 if let Some(label) = elevation_prompt_label() {
                     ui.add_space(8.0);
