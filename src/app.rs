@@ -512,29 +512,31 @@ impl ServerChooserApp {
 }
 
 impl eframe::App for ServerChooserApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         self.highlighted = None;
         self.receive_refresh();
         if matches!(self.refresh, RefreshState::Loading(_)) {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+        egui::Panel::top("toolbar").show_inside(ui, |ui| {
             self.draw_toolbar(ui);
         });
 
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
+        egui::Panel::bottom("status").show_inside(ui, |ui| {
             self.draw_status(ui);
         });
 
-        egui::SidePanel::right("list")
+        egui::Panel::right("list")
             .resizable(true)
-            .default_width(390.0)
-            .show(ctx, |ui| {
+            .default_size(390.0)
+            .show_inside(ui, |ui| {
                 self.draw_list(ui);
             });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let interaction = map::draw_world_map(
                 ui,
                 self.config.as_ref(),
@@ -552,8 +554,8 @@ impl eframe::App for ServerChooserApp {
             }
         });
 
-        self.draw_firewall_prompt(ctx);
-        self.draw_help(ctx);
+        self.draw_firewall_prompt(&ctx);
+        self.draw_help(&ctx);
     }
 }
 

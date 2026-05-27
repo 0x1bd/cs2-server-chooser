@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-eframe = "0.32"
-egui = "0.32"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+eframe = "0.34.3"
+egui = "0.34.3"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rfd = "0.15"
+rfd = "0.17.2"

@@ -68,7 +68,7 @@ pub fn draw_world_map(
                 .hover_pos()
                 .filter(|pos| map_rect.contains(*pos))
                 .map(|pos| {
-                    let scroll = input.smooth_scroll_delta.y + input.raw_scroll_delta.y;
+                    let scroll = input.smooth_scroll_delta.y;
                     (pos, scroll)
                 })
         });
